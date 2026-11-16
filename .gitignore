@@ -1,0 +1,9 @@
+*.o
+victim/ratelimit/ratelimit
+attacker/trafficgen/trafficgen
+__pycache__/
+
+# Generated local trial outputs; preserve/export successful evidence separately.
+/victim/ratelimit/attack*.json
+/victim/ratelimit/evidence*.json
+/victim/ratelimit/verification*.json
