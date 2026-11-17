@@ -69,7 +69,16 @@ def queue_map_id(interface):
     def bpf(*args):
         return json.loads(privileged("bpftool", "-j", *map(str, args), capture=True).stdout)
 
-    programs = bpf("net", "show", "dev", interface).get("xdp", [])
+    network = bpf("net", "show", "dev", interface)
+    if isinstance(network, list):
+        matching = [entry for entry in network
+                    if entry.get("devname", interface) == interface]
+        if len(matching) != 1:
+            raise ValueError("expected exactly one bpftool network entry for interface")
+        network, = matching
+    programs = network.get("xdp", [])
+    if isinstance(programs, dict):
+        programs = [programs]
     if len(programs) != 1:
         raise ValueError("expected exactly one attached XDP program")
     program = bpf("prog", "show", "id", programs[0]["id"])
