@@ -63,7 +63,7 @@ victim_iface = victim.addInterface("experiment")
 victim_iface.addAddress(pg.IPv4Address("10.77.0.1", "255.255.255.0"))
 victim.addService(pg.Execute(
     shell="bash",
-    command="/local/repository/cloudlab/setup.sh",
+    command="sudo /bin/bash /local/repository/cloudlab/setup.sh",
 ))
 
 attacker = request.RawPC("attacker")
@@ -73,7 +73,7 @@ attacker_iface = attacker.addInterface("experiment")
 attacker_iface.addAddress(pg.IPv4Address("10.77.0.2", "255.255.255.0"))
 attacker.addService(pg.Execute(
     shell="bash",
-    command="/local/repository/cloudlab/setup.sh",
+    command="sudo /bin/bash /local/repository/cloudlab/setup.sh",
 ))
 
 experiment_link = request.Link("experiment-link")
