@@ -21,10 +21,16 @@ enum tg_proto {
 	TG_PROTO_TCP = IPPROTO_TCP,
 };
 
+enum rss_input_transform {
+	RSS_XFRM_NONE = 0,
+	RSS_XFRM_SYMMETRIC_OR_XOR,
+};
+
 struct rss_config {
 	uint8_t key[RSS_KEY_LEN];
 	uint32_t indir[RSS_INDIR_MAX];
 	size_t indir_len;
+	enum rss_input_transform input_transform;
 	int loaded;
 };
 

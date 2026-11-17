@@ -109,8 +109,11 @@ def main():
     parser.add_argument("--output-dir", type=Path,
                         default=Path(os.environ.get("RSS_DIR", "/tmp/rss-check")))
     commands = parser.add_subparsers(dest="command", required=True)
-    for command in ("prepare", "replace", "export"):
+    for command in ("prepare", "replace"):
         commands.add_parser(command)
+    export = commands.add_parser("export")
+    export.add_argument("--input-transform",
+                        choices=("auto", "none", "symmetric-or-xor"), default="auto")
     apply = commands.add_parser("apply", help="apply a queue-0, queue-1 or four-queue table")
     apply.add_argument("table", choices=("zero", "one", "balanced"))
     for command in ("before", "report", "compare"):
@@ -171,7 +174,10 @@ def main():
         elif args.command == "export":
             text = privileged("ethtool", "-x", args.interface, capture=True).stdout
             extractor = BASE.parent.parent / "attacker/trafficgen/extract_rss.py"
-            result = subprocess.run([sys.executable, str(extractor)], input=text,
+            command = [sys.executable, str(extractor)]
+            if args.input_transform != "auto":
+                command.extend(("--input-transform", args.input_transform))
+            result = subprocess.run(command, input=text,
                                     check=True, text=True, capture_output=True)
             save(args.output_dir / f"{args.interface}-rss.txt", text)
             save(args.output_dir / f"{args.interface}-rss.conf", result.stdout)
