@@ -21,7 +21,7 @@ cat /local/cloudlab-setup.log
 cat /local/cloudlab-node-diagnostics.txt
 ```
 
-`ready` confirms setup only; it does not validate RSS steering.
+`ready` confirms setup only. It does not validate RSS steering.
 
 Identify the experiment interface on either node with:
 
@@ -35,6 +35,26 @@ export IFACE=$(ip -o -4 addr show | awk '$4 ~ /^10\.77\.0\./ {print $2; exit}')
 - `attacker/trafficgen`: raw IPv4 generator with ordinary and symmetric OR-XOR Toeplitz prediction, queue-targeted tuple search, matched random controls and JSON trial summaries.
 
 Both programs provide `--help` and Python regression tests. Their component READMEs contain build and trial commands.
+
+## Automated trials
+
+Install the controller's YAML dependency on a machine with management SSH access to both nodes:
+
+```sh
+python3 -m pip install -r scripts/requirements.txt
+```
+
+Validate and inspect the expanded experiments without connecting to CloudLab:
+
+```sh
+python3 scripts/run_trial.py \
+    --victim user@victim-control-host \
+    --attacker user@attacker-control-host \
+    --config configs/cloudlab-mlx5-smoke.yaml \
+    --plan
+```
+
+Remove `--plan` to synchronize the remote revisions, prepare the NIC, run every experiment defined by the YAML file, capture evidence and verify each result locally from the frozen evidence. `scripts/run_trial.py` handles orchestration; the commands executed for each remote phase are kept in the named helpers under `scripts/remote/`. The controller derives blackhole routes from the generated source-key range automatically unless the value is explicitly configured. Start with `configs/cloudlab-mlx5-smoke.yaml` to validate the setup. `configs/cloudlab-mlx5-sweep.yaml` runs the full sweep over map modes, capacities and chaff strategies with repetitions. Each trial is archived under `results/<experiment-name>-<trial-id>/` on the controller with its summary, evidence, verification report, manifest, RSS configuration, diagnostics and logs. Sweep names use a compact format such as `lru-sweep_mode-percpu-local_entries-64_chaff-steered_r01-<trial-id>`.
 
 ## Trial preparation
 
