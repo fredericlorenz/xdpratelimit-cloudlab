@@ -39,6 +39,11 @@ def shell_join(arguments):
     return " ".join(shlex.quote(str(argument)) for argument in arguments)
 
 
+def text_sha256(path):
+    content = path.read_bytes().replace(b"\r\n", b"\n")
+    return hashlib.sha256(content).hexdigest()
+
+
 class RemoteController:
     def __init__(self, victim, attacker, settings, log_path):
         self.hosts = {"victim": victim, "attacker": attacker}
@@ -134,7 +139,7 @@ def verify_remote_sync(controller):
 
     local_files = ["victim/ratelimit/verify_attack.py", *REMOTE_HELPERS]
     for relative in local_files:
-        local_hash = hashlib.sha256((REPOSITORY_ROOT / relative).read_bytes()).hexdigest()
+        local_hash = text_sha256(REPOSITORY_ROOT / relative)
         if victim["sha256"].get(relative) != local_hash:
             raise TrialError(f"controller and remote implementation differ: {relative}")
 

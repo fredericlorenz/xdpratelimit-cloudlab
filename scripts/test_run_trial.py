@@ -79,6 +79,17 @@ class CommandTests(unittest.TestCase):
         self.assertEqual("", arguments[-1])
 
 
+class HashTests(unittest.TestCase):
+    def test_text_hash_ignores_crlf(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            lf = root / "lf.txt"
+            crlf = root / "crlf.txt"
+            lf.write_bytes(b"first\nsecond\n")
+            crlf.write_bytes(b"first\r\nsecond\r\n")
+            self.assertEqual(run_trial.text_sha256(lf), run_trial.text_sha256(crlf))
+
+
 class RemoteControllerTests(unittest.TestCase):
     @patch("run_trial.subprocess.run")
     def test_remote_script_is_sent_as_lf_bytes(self, run):
