@@ -3,11 +3,12 @@
 
 import argparse
 import json
-from pathlib import Path
+import re
 import socket
 import struct
 import subprocess
 import sys
+from pathlib import Path
 
 from stats import counters, number
 
@@ -19,6 +20,14 @@ FIELDS = ("first_created_ns", "latest_created_ns", "initializations", "map_inser
 EVENT_FIELDS = ("observed_ns", "prior_tat_ns", "created_ns", "cpu", "queue", "action", "inserted")
 MAP_MODES = ("shared-global", "shared-local", "percpu-global", "percpu-local",
              "hash-shared", "hash-percpu")
+RESULTS_DIR = Path(__file__).resolve().parents[2] / "results"
+
+
+def result_name(value):
+    if (len(value) > 160 or "__" in value or not re.fullmatch(r"[A-Za-z0-9_-]+", value)):
+        raise argparse.ArgumentTypeError(
+            "result name must contain only letters, digits, hyphens and single underscores")
+    return value
 
 
 def decode(value, fields, fmt):
@@ -225,8 +234,14 @@ def main():
     source.add_argument("--evidence", type=Path, help="previously saved victim evidence")
     parser.add_argument("--save-evidence", type=Path)
     parser.add_argument("--output", type=Path, help="save machine-readable verification report")
+    parser.add_argument("--results-dir", type=Path, default=RESULTS_DIR,
+                        help="archive root (default: repository results directory)")
+    parser.add_argument("--result-name", type=result_name,
+                        help="descriptive prefix for the archived trial directory")
     parser.add_argument("--expect", choices=("reset", "retained", "either"), default="reset")
     args = parser.parse_args()
+
+    summary = evidence = None
     try:
         summary = json.loads(args.summary.read_text())
         evidence = (json.loads(args.evidence.read_text()) if args.evidence else
@@ -237,10 +252,31 @@ def main():
     except (OSError, ValueError, KeyError, TypeError, IndexError, struct.error,
             subprocess.CalledProcessError) as error:
         report = {"valid": False, "outcome": "invalid", "failures": [str(error)]}
+
+    trial_id = summary.get("trial_id") if isinstance(summary, dict) else None
+    archive_failed = False
+    if type(trial_id) is int and trial_id > 0:
+        try:
+            directory = (f"{args.result_name}-{trial_id}" if args.result_name else str(trial_id))
+            destination = args.results_dir / directory
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination.mkdir()
+
+            save_json(destination / "summary.json", summary)
+            if evidence is not None:
+                save_json(destination / "evidence.json", evidence)
+            save_json(destination / "verification.json", report)
+            print(f"Saved results: {destination}", file=sys.stderr)
+        except OSError as error:
+            print(f"Could not save results: {error}", file=sys.stderr)
+            archive_failed = True
+
     if args.output:
         save_json(args.output, report)
     print(json.dumps(report, indent=2))
-    return 0 if report["valid"] and args.expect in ("either", report["outcome"]) else 1
+    outcome_matches = (args.expect == "either" or args.expect == report["outcome"])
+    success = not archive_failed and report["valid"] and outcome_matches
+    return 0 if success else 1
 
 
 if __name__ == "__main__":

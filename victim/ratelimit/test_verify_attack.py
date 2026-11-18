@@ -1,11 +1,18 @@
 """Regression cases for isolated attack evidence, without loading BPF programs."""
 
+import argparse
+import io
+import json
 import socket
 import struct
 import sys
+import tempfile
 import unittest
+from contextlib import redirect_stderr, redirect_stdout
+from pathlib import Path
+from unittest.mock import patch
 
-from verify_attack import evaluate
+from verify_attack import evaluate, main, result_name
 
 
 def trial(*, reset=True, retries=1):
@@ -53,6 +60,82 @@ def trial(*, reset=True, retries=1):
 
 
 class VerifyAttackTests(unittest.TestCase):
+    def test_result_name_rejects_paths(self):
+        for value in ("", "../trial", "parent/trial", r"parent\trial", "trial.name",
+                      "trial__name"):
+            with self.subTest(value=value), self.assertRaises(argparse.ArgumentTypeError):
+                result_name(value)
+        self.assertEqual(result_name("trial_name"), "trial_name")
+
+    def test_results_directory_can_be_overridden(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            summary, evidence = trial()
+            (root / "attack.json").write_text(json.dumps(summary))
+            (root / "capture.json").write_text(json.dumps(evidence))
+            archive = root / "controller-results"
+            argv = ["verify_attack.py", "--summary", str(root / "attack.json"),
+                    "--evidence", str(root / "capture.json"),
+                    "--results-dir", str(archive), "--result-name", "smoke-test"]
+            with patch("sys.argv", argv), redirect_stdout(io.StringIO()), \
+                    redirect_stderr(io.StringIO()):
+                self.assertEqual(main(), 0)
+            self.assertTrue((archive / "smoke-test-123" / "verification.json").is_file())
+
+    def test_verification_automatically_saves_valid_and_invalid_trials(self):
+        for outcome in ("reset", "retained", "invalid"):
+            with self.subTest(outcome=outcome), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                summary, evidence = trial(reset=outcome == "reset")
+                if outcome == "invalid":
+                    summary["chaff_sent"] -= 1
+                (root / "attack.json").write_text(json.dumps(summary))
+                (root / "capture.json").write_text(json.dumps(evidence))
+                argv = ["verify_attack.py", "--summary", str(root / "attack.json"),
+                        "--evidence", str(root / "capture.json"), "--expect", "either"]
+                with patch("sys.argv", argv), patch("verify_attack.RESULTS_DIR", root / "results"), \
+                        redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
+                    status = main()
+                saved = root / "results" / "123"
+                self.assertEqual(json.loads((saved / "summary.json").read_text()), summary)
+                self.assertEqual(json.loads((saved / "evidence.json").read_text()), evidence)
+                report = json.loads((saved / "verification.json").read_text())
+                self.assertEqual(report["outcome"], outcome)
+                self.assertEqual(status, int(outcome == "invalid"))
+
+    def test_capture_failure_still_saves_summary_and_failure(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            summary, _ = trial()
+            (root / "attack.json").write_text(json.dumps(summary))
+            argv = ["verify_attack.py", "--summary", str(root / "attack.json"),
+                    "--program-id", "42"]
+            with patch("sys.argv", argv), patch("verify_attack.RESULTS_DIR", root / "results"), \
+                    patch("verify_attack.capture", side_effect=ValueError("capture failed")), \
+                    redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
+                self.assertEqual(main(), 1)
+            saved = root / "results" / "123"
+            self.assertTrue((saved / "summary.json").is_file())
+            self.assertFalse((saved / "evidence.json").exists())
+            self.assertEqual(json.loads((saved / "verification.json").read_text())["failures"],
+                             ["capture failed"])
+
+    def test_existing_result_is_not_overwritten(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            summary, evidence = trial()
+            (root / "attack.json").write_text(json.dumps(summary))
+            (root / "capture.json").write_text(json.dumps(evidence))
+            argv = ["verify_attack.py", "--summary", str(root / "attack.json"),
+                    "--evidence", str(root / "capture.json")]
+            with patch("sys.argv", argv), patch("verify_attack.RESULTS_DIR", root / "results"), \
+                    redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
+                self.assertEqual(main(), 0)
+                saved = root / "results" / "123" / "verification.json"
+                original = saved.read_bytes()
+                self.assertEqual(main(), 1)
+                self.assertEqual(saved.read_bytes(), original)
+
     def test_reset_and_retained(self):
         for reset in (True, False):
             with self.subTest(reset=reset):
