@@ -1,0 +1,63 @@
+version: 1
+
+controller:
+  remote_repository: /local/repository
+  remote_trial_root: /tmp/xdp-rss-trials
+  results_directory: results
+  command_timeout_seconds: 180
+  require_clean: true
+  require_same_commit: true
+  require_setup_ready: true
+  build: true
+  run_tests: true
+  continue_on_failure: false
+  ssh_options:
+    - -o
+    - BatchMode=yes
+    - -o
+    - ConnectTimeout=10
+
+defaults:
+  network:
+    victim_experiment_ip: 10.77.0.1
+    attacker_experiment_ip: 10.77.0.2
+    queue_count: 4
+    stop_irqbalance: true
+    disable_rps: true
+    irq_affinity:
+      enabled: true
+      name_pattern: "mlx5_comp{queue}@"
+      cpus: [0, 1, 2, 3]
+  rss:
+    input_transform: symmetric-or-xor
+    apply_equal: true
+  limiter:
+    rate_pps: 1
+    burst: 10
+    entries: 64
+    key: source
+    map_mode: percpu-local
+    target_source: 10.77.0.2
+  traffic:
+    destination: 10.77.0.1
+    source: 10.77.0.2
+    key: source
+    protocol: udp
+    target_queue: null
+    keys: 256
+    packets_per_key: 2
+    rate_pps: 0
+    source_port: 50000
+    destination_port: 1234
+    warmup_packets: 11
+    retry_packets: 1
+    chaff: steered
+    dry_run_first: true
+  verification:
+    expect: reset
+    drain_seconds: 1.0
+  cleanup:
+    detach: true
+
+experiments:
+  - name: mlx5-percpu-local
