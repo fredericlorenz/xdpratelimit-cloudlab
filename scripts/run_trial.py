@@ -65,10 +65,20 @@ class RemoteController:
     def remote(self, role, script, label, *, check=True, timeout=None):
         command = ["ssh", *self.settings["ssh_options"], self.hosts[role], "bash", "-se"]
         self.log(f"\n## {label} on {role} ({self.hosts[role]})\n{script.rstrip()}")
-        result = subprocess.run(command, check=False,
-                                input="set -euo pipefail\n" + script,
-                                text=True, capture_output=True,
-                                timeout=timeout or self.settings["command_timeout_seconds"])
+        payload = ("set -euo pipefail\n" + script).encode("utf-8")
+        completed = subprocess.run(
+            command,
+            check=False,
+            input=payload,
+            capture_output=True,
+            timeout=timeout or self.settings["command_timeout_seconds"],
+        )
+        result = subprocess.CompletedProcess(
+            completed.args,
+            completed.returncode,
+            completed.stdout.decode("utf-8", errors="replace"),
+            completed.stderr.decode("utf-8", errors="replace"),
+        )
         self.log(result.stdout)
         self.log(result.stderr)
         if check and result.returncode:

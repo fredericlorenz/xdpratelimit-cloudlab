@@ -4,6 +4,8 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import run_trial
@@ -75,6 +77,25 @@ class CommandTests(unittest.TestCase):
         )
         self.assertEqual(1, arguments[-2])
         self.assertEqual("", arguments[-1])
+
+
+class RemoteControllerTests(unittest.TestCase):
+    @patch("run_trial.subprocess.run")
+    def test_remote_script_is_sent_as_lf_bytes(self, run):
+        run.return_value = SimpleNamespace(
+            args=["ssh"], returncode=0, stdout=b"ok\n", stderr=b""
+        )
+        settings = {"ssh_options": [], "command_timeout_seconds": 10}
+        with tempfile.TemporaryDirectory() as directory:
+            controller = run_trial.RemoteController(
+                "victim", "attacker", settings, Path(directory) / "controller.log"
+            )
+            result = controller.remote("victim", "true\n", "test")
+
+        payload = run.call_args.kwargs["input"]
+        self.assertEqual(b"set -euo pipefail\ntrue\n", payload)
+        self.assertNotIn(b"\r", payload)
+        self.assertEqual("ok\n", result.stdout)
 
 
 class ResultArchiveTests(unittest.TestCase):
